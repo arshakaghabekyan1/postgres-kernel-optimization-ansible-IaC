@@ -1,0 +1,41 @@
+---
+- name: Configure PostgreSQL Master-Slave Setup
+  hosts: postgresql_master:postgresql_slave
+  become: true
+  gather_facts: true
+
+  pre_tasks:
+    - name: Wait for system to be ready
+      wait_for_connection:
+        timeout: 300
+
+    - name: Add PostgreSQL repository key
+      apt_key:
+        url: https://www.postgresql.org/media/keys/ACCC4CF8.asc
+        state: present
+      when: ansible_os_family == "Debian"
+
+    - name: Add PostgreSQL repository
+      apt_repository:
+        repo: deb http://apt.postgresql.org/pub/repos/apt {{ ansible_distribution_release }}-pgdg main
+        state: present
+        filename: pgdg
+      when: ansible_os_family == "Debian"
+
+    - name: Update apt cache
+      apt:
+        update_cache: yes
+      when: ansible_os_family == "Debian"
+
+  roles:
+    - role: postgresql_replication
+      vars:
+        postgresql_version: 14
+        postgresql_replication_user: replicator
+        postgresql_replication_password: "{{ lookup('env', 'POSTGRES_REPL_PASSWORD') | default('StrongPassword123!', true) }}"
+
+  post_tasks:
+    - name: Verify PostgreSQL is running
+      service:
+        name: postgresql
+        state: started

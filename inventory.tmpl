@@ -1,0 +1,12 @@
+[postgresql_master]
+master ansible_host=${master_ip} ansible_user=${ssh_user}
+
+[postgresql_slave]
+slave ansible_host=${slave_ip} ansible_user=${ssh_user}
+
+[postgresql:children]
+postgresql_master
+postgresql_slave
+
+[all:vars]
+ansible_python_interpreter=/usr/bin/python3

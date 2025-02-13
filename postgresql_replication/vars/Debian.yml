@@ -1,0 +1,9 @@
+---
+postgresql_packages:
+  - postgresql-14
+  - postgresql-client-14
+  - postgresql-contrib-14
+postgresql_service: postgresql
+postgresql_data_dir: /var/lib/postgresql/14/main
+postgresql_config_path: /etc/postgresql/14/main
+postgresql_bin_path: /usr/lib/postgresql/14/bin

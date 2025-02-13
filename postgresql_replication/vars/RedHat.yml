@@ -1,0 +1,10 @@
+---
+postgresql_packages:
+  - acl
+  - postgresql-server
+  - postgresql-contrib
+  - python3-psycopg2
+postgresql_service: postgresql
+postgresql_data_dir: /var/lib/pgsql/data
+postgresql_initdb_command: postgresql-setup --initdb
+allow_world_readable_tmpfiles: true

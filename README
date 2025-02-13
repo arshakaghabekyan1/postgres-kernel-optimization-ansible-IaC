@@ -1,0 +1,245 @@
+# PostgreSQL Infrastructure on GCP
+
+This Terraform configuration provisions a PostgreSQL master-slave replication setup on Google Cloud Platform (GCP) using compute instances and configures them using Ansible.
+
+## Prerequisites
+
+- Google Cloud SDK installed and configured
+- Terraform (version >= 1.0.0)
+- Ansible (version >= 2.9)
+- SSH key pair for instance access
+
+## Minimum IAM Roles Required
+
+1. **Compute Engine Roles**
+   - `roles/compute.instanceAdmin.v1`
+     - Create and manage VM instances
+     - Manage disks and images
+     - Configure instance properties
+   
+   - `roles/compute.networkAdmin`
+     - Create and manage VPC networks
+     - Configure subnets
+     - Manage firewall rules
+     - Configure network interfaces
+
+2. **Service Account Roles**
+   - `roles/iam.serviceAccountUser`
+     - Use service accounts for VM instances
+     - Manage service account access
+
+3. **Storage Roles** (For Terraform State)
+   - `roles/storage.admin`
+     - Create and manage GCS buckets
+     - Manage bucket IAM permissions
+     - Read/write state files
+
+## Custom IAM Role Permissions
+
+If you prefer to create a custom role with minimum required permissions:
+
+```yaml
+title: "Terraform PostgreSQL Admin"
+description: "Required permissions for Terraform to manage PostgreSQL instances"
+stage: "GA"
+includedPermissions:
+- compute.disks.create
+- compute.disks.delete
+- compute.disks.get
+- compute.disks.use
+- compute.firewalls.create
+- compute.firewalls.delete
+- compute.firewalls.get
+- compute.firewalls.update
+- compute.instances.create
+- compute.instances.delete
+- compute.instances.get
+- compute.instances.setMetadata
+- compute.instances.setServiceAccount
+- compute.instances.start
+- compute.instances.stop
+- compute.instances.update
+- compute.networks.create
+- compute.networks.delete
+- compute.networks.get
+- compute.networks.updatePolicy
+- compute.subnetworks.create
+- compute.subnetworks.delete
+- compute.subnetworks.get
+- compute.subnetworks.use
+- storage.buckets.create
+- storage.buckets.delete
+- storage.buckets.get
+- storage.buckets.update
+- storage.objects.create
+- storage.objects.delete
+- storage.objects.get
+- storage.objects.update
+- iam.serviceAccounts.actAs
+- iam.serviceAccounts.get
+```
+
+## Authentication Setup
+
+1. Login to Google Cloud:
+```bash
+gcloud auth application-default login
+```
+
+2. Set your project:
+```bash
+gcloud config set project YOUR_PROJECT_ID
+```
+
+3. Export postgresql password:
+```bash
+export POSTGRES_REPL_PASSWORD="YourSecurePasswordHere"
+```
+
+## State Management
+
+The Terraform state is stored in a Google Cloud Storage bucket. Before running Terraform:
+
+1. Create a GCS bucket:
+```bash
+gsutil mb gs://your-terraform-state-bucket
+```
+
+2. Enable versioning:
+```bash
+gsutil versioning set on gs://your-terraform-state-bucket
+```
+
+## Infrastructure Components
+
+- VPC Network with custom subnet
+- Firewall rules for PostgreSQL (5432) and SSH (22)
+- 2 Compute instances (n2-standard-2)
+  - PostgreSQL Master (Zone a)
+  - PostgreSQL Slave (Zone b)
+- 50GB SSD boot disks
+- Python installation for Ansible compatibility
+
+## Directory Structure
+
+```
+.
+├── main.tf                 # Main Terraform configuration
+├── inventory.tmpl          # Ansible inventory template
+├── postgresql_playbook.yml # Ansible playbook
+├── backend.tf.tfvars      # Backend configuration
+└── terraform.tfvars       # Terraform variables
+```
+
+## Configuration
+
+1. Create `terraform.tfvars`:
+```hcl
+project_id      = "your-project-id"
+region          = "us-central1"
+machine_type    = "n2-standard-2"
+ssh_user        = "ubuntu"
+ssh_public_key  = "~/.ssh/id_rsa.pub"
+ssh_private_key = "~/.ssh/id_rsa"
+```
+
+2. Create `backend.tf.tfvars`:
+```hcl
+bucket = "your-terraform-state-bucket"
+prefix = "terraform/postgresql"
+```
+
+## Usage
+
+1. Initialize Terraform with backend configuration:
+```bash
+terraform init -backend-config="backend.tf.tfvars"
+```
+
+2. Plan the infrastructure:
+```bash
+terraform plan
+```
+
+3. Apply the configuration:
+```bash
+terraform apply
+```
+
+4. To destroy the infrastructure:
+```bash
+terraform destroy
+```
+
+## Accessing the Instances
+
+After successful deployment, you can access the instances using:
+```bash
+ssh -i ~/.ssh/id_rsa ubuntu@$(terraform output -raw master_public_ip)
+ssh -i ~/.ssh/id_rsa ubuntu@$(terraform output -raw slave_public_ip)
+```
+
+## PostgreSQL Configuration
+
+The PostgreSQL instances are configured with:
+- Master-slave streaming replication
+- Optimized performance settings
+- Automated backups
+- Monitoring scripts
+- Custom security configurations
+
+
+## Security Features
+
+- Isolated VPC network
+- Restricted firewall rules
+- SSH key authentication
+- No password authentication allowed
+- Regular security updates via unattended-upgrades
+
+## Maintenance
+
+1. To update instance configurations:
+```bash
+ansible-playbook -i inventory.ini postgresql_playbook.yml
+```
+
+2. To check PostgreSQL status:
+```bash
+ssh ubuntu@<instance-ip> 'sudo systemctl status postgresql'
+```
+
+## Troubleshooting
+
+1. If Ansible fails to connect:
+- Verify SSH key permissions (should be 600)
+- Check security group rules
+- Ensure instances are fully booted
+
+2. If replication fails:
+- Check PostgreSQL logs: `/var/log/postgresql/postgresql-*.log`
+- Verify network connectivity between instances
+- Check replication user credentials
+
+## Backup and Recovery
+
+Automated backups are configured to run daily. Backup files are stored in:
+```
+/var/lib/postgresql/backups/
+```
+
+To restore from backup:
+```bash
+pg_restore -d dbname backup_file.dump
+```
+
+## Cost Considerations
+
+This setup includes:
+- 2 x n2-standard-2 instances (~$70/month each)
+- 50GB SSD disks (~$8.50/month each)
+- Network egress costs (variable)
+
+## License
+
+This project is licensed under the MIT License - see the LICENSE file for details.

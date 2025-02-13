@@ -1,0 +1,6 @@
+project_id     = "shared-vpc-b77c"
+region         = "us-central1"
+machine_type   = "n2-standard-2"
+ssh_user       = "ubuntu"
+ssh_public_key = "/Users/arshakaghabekyan/Documents/id_rsa.pub"
+ssh_private_key = "/Users/arshakaghabekyan/Documents/id_rsa"

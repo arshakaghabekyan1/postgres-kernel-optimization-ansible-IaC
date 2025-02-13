@@ -1,0 +1,12 @@
+postgresql_version: 14
+postgresql_replication_user: replicator
+postgresql_replication_password: "{{ lookup('env', 'POSTGRES_REPL_PASSWORD') }}"
+postgresql_max_connections: 100
+postgresql_disk_type: "ssd"
+postgresql_admin_email: "admin@example.com"
+postgresql_data_dir: "/var/lib/postgresql/14/main"
+postgresql_service: "postgresql@14-main"
+postgresql_config_path: "/etc/postgresql/14/main"
+postgresql_bin_path: "/usr/lib/postgresql/14/bin"
+postgresql_initdb_command: "pg_createcluster 14 main"
+allow_world_readable_tmpfiles: true

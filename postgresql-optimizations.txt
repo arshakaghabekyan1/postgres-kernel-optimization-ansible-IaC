@@ -1,0 +1,115 @@
+# Connection Settings
+listen_addresses = '*'
+max_connections = {{ postgresql_max_connections | default(200) }}  # Set based on your application needs
+superuser_reserved_connections = 3
+unix_socket_directories = '/var/run/postgresql'
+
+# Memory Configuration
+shared_buffers = {{ (ansible_memtotal_mb * 0.25) | int }}MB         # 25% of RAM
+effective_cache_size = {{ (ansible_memtotal_mb * 0.75) | int }}MB    # 75% of RAM
+maintenance_work_mem = {{ [((ansible_memtotal_mb * 0.05) | int), 2048] | min }}MB  # 5% of RAM, max 2GB
+work_mem = {{ ((ansible_memtotal_mb * 0.25 / postgresql_max_connections) | int) }}MB  # (25% RAM)/max_connections
+huge_pages = try    # Enables huge pages if available
+temp_buffers = 16MB # Per-session memory for temporary tables
+
+# Checkpoint Settings
+checkpoint_timeout = 15min               # Spread out checkpoints
+checkpoint_completion_target = 0.9       # Spread I/O over 90% of checkpoint interval
+checkpoint_warning = 30s
+max_wal_size = 16GB                     # Maximum WAL size before checkpoint
+min_wal_size = 4GB                      # Minimum WAL size to maintain
+
+# Planner Cost Settings
+random_page_cost = {{ '1.1' if postgresql_disk_type == 'ssd' else '4' }}  # Lower for SSDs
+seq_page_cost = 1.0
+cpu_tuple_cost = 0.03
+cpu_index_tuple_cost = 0.01
+cpu_operator_cost = 0.0025
+effective_io_concurrency = {{ '200' if postgresql_disk_type == 'ssd' else '2' }}  # Higher for SSDs
+
+# WAL Configuration
+wal_level = replica                     # Required for replication
+wal_compression = on                    # Compress WAL data
+wal_buffers = 16MB                      # WAL buffer size
+wal_writer_delay = 200ms                # WAL writer sleep time
+wal_writer_flush_after = 1MB            # Flush WAL after this much data
+
+# Background Writer
+bgwriter_delay = 200ms                  # Sleep between rounds
+bgwriter_lru_maxpages = 100            # Max pages per round
+bgwriter_lru_multiplier = 2.0           # Multiple of average need
+bgwriter_flush_after = 512kB            # Background writer flush after
+
+# Asynchronous Behavior
+effective_cache_size = {{ (ansible_memtotal_mb * 0.75) | int }}MB  # 75% of RAM
+default_statistics_target = 100         # Statistics target for ANALYZE
+
+# Query Tuning
+random_page_cost = {{ '1.1' if postgresql_disk_type == 'ssd' else '4' }}
+effective_io_concurrency = {{ '200' if postgresql_disk_type == 'ssd' else '2' }}
+geqo_threshold = 12                     # Triggers genetic query optimization
+from_collapse_limit = 8                 # Subquery optimization threshold
+join_collapse_limit = 8                 # JOIN optimization threshold
+
+# Autovacuum Configuration
+autovacuum = on
+autovacuum_max_workers = {{ [ansible_processor_vcpus // 4, 3] | max }}  # CPU cores / 4, min 3
+autovacuum_naptime = 1min
+autovacuum_vacuum_threshold = 50
+autovacuum_vacuum_scale_factor = 0.1    # Vacuum threshold = threshold + factor * reltuples
+autovacuum_analyze_threshold = 50
+autovacuum_analyze_scale_factor = 0.05
+autovacuum_vacuum_cost_delay = 2ms      # Vacuum cost delay
+autovacuum_vacuum_cost_limit = 2000     # Vacuum cost limit
+
+# Statement Behavior
+statement_timeout = 0                   # In milliseconds, 0 is disabled
+lock_timeout = 0                        # In milliseconds, 0 is disabled
+idle_in_transaction_session_timeout = 0 # In milliseconds, 0 is disabled
+
+# Client Connection Defaults
+client_min_messages = notice
+search_path = '"$user", public'         # Schema search path
+
+# Lock Management
+deadlock_timeout = 1s
+max_locks_per_transaction = 64          # Maximum locks per transaction
+
+# Error Reporting and Logging
+log_destination = 'csvlog'
+logging_collector = on
+log_directory = 'log'
+log_filename = 'postgresql-%Y-%m-%d_%H%M%S.log'
+log_rotation_age = 1d
+log_rotation_size = 100MB
+log_min_duration_statement = 1000       # Log slow queries (>1s)
+log_checkpoints = on
+log_connections = on
+log_disconnections = on
+log_lock_waits = on
+log_temp_files = 0                      # Log temp file creation
+log_autovacuum_min_duration = 0         # Log autovacuum activity
+
+
+
+
+
+
+#######
+# Connection Settings
+listen_addresses = '*'                  # Listen on all available IP addresses
+port = 5432                            # Default PostgreSQL port
+unix_socket_directories = '/var/run/postgresql'
+unix_socket_permissions = 0777
+unix_socket_group = 'postgres'
+
+# Memory Settings
+shared_buffers = {{ (ansible_memtotal_mb * 0.25) | int }}MB
+work_mem = 8MB
+maintenance_work_mem = 64MB
+
+# Process Settings
+max_connections = 100
+
+# Replication Settings
+hot_standby = on                       # Allows read-only queries during recovery

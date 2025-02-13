@@ -1,0 +1,254 @@
+---
+- name: Include OS-specific variables
+  include_vars: "{{ ansible_os_family }}.yml"
+
+- name: Stop PostgreSQL service
+  service:
+    name: postgresql
+    state: stopped
+  ignore_errors: yes
+
+- name: Remove all PostgreSQL packages
+  apt:
+    name:
+      - postgresql*
+      - postgresql-client*
+      - postgresql-common
+      - postgresql-client-common
+    state: absent
+    purge: yes
+    autoremove: yes
+  when: ansible_os_family == "Debian"
+
+- name: Remove PostgreSQL directories and files
+  file:
+    path: "{{ item }}"
+    state: absent
+  with_items:
+    - /var/lib/postgresql
+    - /etc/postgresql
+    - /var/log/postgresql
+    - /var/run/postgresql
+    - /etc/postgresql-common
+  ignore_errors: yes
+
+- name: Remove postgres user and group
+  user:
+    name: postgres
+    state: absent
+    remove: yes
+  ignore_errors: yes
+
+- name: Update apt cache
+  apt:
+    update_cache: yes
+  when: ansible_os_family == "Debian"
+
+- name: Install PostgreSQL
+  apt:
+    name:
+      - postgresql-14
+      - postgresql-client-14
+      - postgresql-contrib-14
+      - python3-psycopg2
+      - acl
+    state: present
+    install_recommends: yes
+  when: ansible_os_family == "Debian"
+
+- name: Wait for system to settle
+  pause:
+    seconds: 10
+
+- name: Configure postgresql.conf
+  template:
+    src: postgresql.conf.j2
+    dest: "/etc/postgresql/14/main/postgresql.conf"
+    owner: postgres
+    group: postgres
+    mode: '0755'
+  notify: restart postgresql
+
+- name: Configure pg_hba.conf
+  template:
+    src: pg_hba.conf.j2
+    dest: "/etc/postgresql/14/main/pg_hba.conf"
+    owner: postgres
+    group: postgres
+    mode: '0755'
+  notify: restart postgresql
+
+- name: Check initial cluster status
+  command: pg_lsclusters
+  register: initial_clusters
+  changed_when: false
+
+- name: Show initial cluster status
+  debug:
+    var: initial_clusters.stdout_lines
+
+- name: Ensure proper ownership
+  file:
+    path: "{{ item }}"
+    owner: postgres
+    group: postgres
+    recurse: yes
+  with_items:
+    - /var/lib/postgresql
+    - /etc/postgresql
+    - /var/log/postgresql
+  ignore_errors: yes
+
+- name: Final cluster status check
+  command: pg_lsclusters
+  register: final_clusters
+  changed_when: false
+
+- name: Show final cluster status
+  debug:
+    var: final_clusters.stdout_lines
+
+- name: Check PostgreSQL service status
+  command: systemctl status postgresql
+  register: pg_status
+  ignore_errors: yes
+
+- name: Show PostgreSQL service status
+  debug:
+    var: pg_status.stdout_lines
+
+- name: Check PostgreSQL logs
+  shell: "tail -n 50 /var/log/postgresql/postgresql-14-main.log"
+  register: pg_logs
+  ignore_errors: yes
+
+- name: Show PostgreSQL logs
+  debug:
+    var: pg_logs.stdout_lines
+
+- name: Restart PostgreSQL cluster
+  command: pg_ctlcluster 14 main restart
+  register: cluster_start
+
+- name: Display cluster restart results
+  debug:
+    var: cluster_start
+
+- name: Wait for PostgreSQL to be ready
+  wait_for:
+    path: "/var/run/postgresql/.s.PGSQL.5432"
+    state: present
+    timeout: 30
+
+- name: Verify PostgreSQL is accepting connections
+  command: pg_isready -U postgres
+  register: pg_ready
+  until: pg_ready.rc == 0
+  retries: 12
+  delay: 5
+
+- name: Check cluster status
+  command: pg_lsclusters
+  register: final_clusters
+  changed_when: false
+
+- name: Show final cluster status
+  debug:
+    var: final_clusters.stdout_lines
+
+- name: Create replication user on master
+  postgresql_user:
+    name: "{{ postgresql_replication_user }}"
+    password: "{{ postgresql_replication_password }}"
+    role_attr_flags: REPLICATION
+  become: true
+  become_user: postgres
+  when: inventory_hostname in groups['postgresql_master']
+
+- name: Configure slave node
+  block:
+    - name: Stop PostgreSQL on slave
+      service:
+        name: postgresql
+        state: stopped
+
+    - name: Clean existing data directory on slave
+      file:
+        path: /var/lib/postgresql/14/main
+        state: absent
+
+    - name: Create empty data directory on slave
+      file:
+        path: /var/lib/postgresql/14/main
+        state: directory
+        owner: postgres
+        group: postgres
+        mode: '0700'
+
+    - name: Take base backup for slave
+      shell: |
+        PGPASSWORD="{{ postgresql_replication_password }}" pg_basebackup \
+        -h {{ hostvars[groups['postgresql_master'][0]]['ansible_host'] }} \
+        -D /var/lib/postgresql/14/main \
+        -U {{ postgresql_replication_user }} \
+        -P -v --wal-method=stream
+      become: true
+      become_user: postgres
+
+    - name: Configure postgresql.conf for slave
+      template:
+        src: postgresql.conf.slave.j2
+        dest: "/etc/postgresql/14/main/postgresql.conf"
+        owner: postgres
+        group: postgres
+        mode: '0644'
+
+    - name: Create standby.signal file
+      file:
+        path: "/var/lib/postgresql/14/main/standby.signal"
+        state: touch
+        owner: postgres
+        group: postgres
+        mode: '0600'
+
+    - name: Start PostgreSQL on slave
+      service:
+        name: postgresql
+        state: started
+
+    - name: Wait for PostgreSQL to be ready on slave
+      wait_for:
+        path: "/var/run/postgresql/.s.PGSQL.5432"
+        state: present
+        timeout: 30
+
+  when: inventory_hostname in groups['postgresql_slave']
+
+- name: Configure recovery.conf on slave
+  template:
+    src: recovery.conf.j2
+    dest: "{{ postgresql_data_dir }}/recovery.conf"
+    owner: postgres
+    group: postgres
+    mode: '0755'
+  become: true
+  when: inventory_hostname in groups['postgresql_slave']
+  notify: restart postgresql
+
+- name: Configure kernel parameters
+  template:
+    src: sysctl.conf.j2
+    dest: /etc/sysctl.d/99-postgresql.conf
+    owner: root
+    group: root
+    mode: '0644'
+  notify: reload sysctl
+  become: true
+  when: inventory_hostname in groups['postgresql_master']
+
+
+- name: Apply kernel parameters
+  command: sysctl -p /etc/sysctl.d/99-postgresql.conf
+  changed_when: false
+  become: true
+  when: inventory_hostname in groups['postgresql_master']
