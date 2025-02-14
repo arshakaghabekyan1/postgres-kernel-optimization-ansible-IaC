@@ -4,6 +4,5 @@
     name: "{{ postgresql_service }}"
     state: restarted
   become: true
-
 - name: reload sysctl
   command: sysctl --system

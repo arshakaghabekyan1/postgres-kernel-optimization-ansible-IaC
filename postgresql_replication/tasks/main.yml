@@ -222,12 +222,22 @@
         state: present
         timeout: 30
 
+    - name: Check replication status on slave
+      shell: |
+       sudo -u postgres psql -c "SELECT pg_is_in_recovery();"
+      become: true
+      register: slave_replication_status
+
+    - name: Display slave replication status
+      debug:
+        var: slave_replication_status.stdout_lines
+
   when: inventory_hostname in groups['postgresql_slave']
 
 - name: Configure recovery.conf on slave
   template:
     src: recovery.conf.j2
-    dest: "{{ postgresql_data_dir }}/recovery.conf"
+    dest: "{{ postgresql_config_path }}/recovery.conf"
     owner: postgres
     group: postgres
     mode: '0755'
@@ -243,12 +253,12 @@
     group: root
     mode: '0644'
   notify: reload sysctl
-  become: true
+  become_user: postgres
   when: inventory_hostname in groups['postgresql_master']
-
 
 - name: Apply kernel parameters
   command: sysctl -p /etc/sysctl.d/99-postgresql.conf
   changed_when: false
-  become: true
+  become_user: postgres
   when: inventory_hostname in groups['postgresql_master']
+  

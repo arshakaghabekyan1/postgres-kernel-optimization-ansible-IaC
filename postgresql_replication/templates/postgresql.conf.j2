@@ -3,7 +3,6 @@ hba_file = '/etc/postgresql/14/main/pg_hba.conf'
 ident_file = '/etc/postgresql/14/main/pg_ident.conf'
 external_pid_file = '/var/run/postgresql/14-main.pid'
 
-
 # Connection Settings
 listen_addresses = '*'
 max_connections = {{ postgresql_max_connections | default(200) }}  # Set based on your application needs

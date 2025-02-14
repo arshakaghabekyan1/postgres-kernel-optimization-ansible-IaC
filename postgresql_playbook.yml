@@ -27,6 +27,16 @@
         update_cache: yes
       when: ansible_os_family == "Debian"
 
+    - name: Install PostgreSQL 14 packages
+      apt:
+        name:
+          - postgresql-14
+          - postgresql-client-14
+          - postgresql-contrib-14
+          - python3-psycopg2
+        state: present
+      when: ansible_os_family == "Debian"
+
   roles:
     - role: postgresql_replication
       vars:
