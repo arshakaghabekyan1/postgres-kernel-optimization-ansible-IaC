@@ -7,7 +7,7 @@ terraform {
     }
   }
   backend "gcs" {
-    bucket = "gcf-v2-uploads-564541354288-europe-west3"
+    bucket = "PUT_YOUR_BUCKET_HERE"
     prefix = "terraform/postgresql"
   }
 }
